@@ -9,13 +9,18 @@ const myURI = process.env['MONGO_URI']
 
 // connect to MongoDB
 mongoose.connect(myURI, {useNewUrlParser: true, useUnifiedTopology: true});
+mongoose.set('useFindAndModify', false);
 
 let urlSchema = new mongoose.Schema({
   url: String,
   urlShorten: Number
-})
+});
+let counterSchema = new mongoose.Schema({
+  seqValue: Number
+});
 
 let Url = new mongoose.model('Url', urlSchema);
+let Counter = new mongoose.model('Counter', counterSchema);
 
 // Basic Configuration
 const port = process.env.PORT || 3000;
@@ -82,38 +87,41 @@ app.route('/api/shorturl')
           else console.log(inf);
           // if url not found then save url
           if (!inf.length) {
-            let urlShort = new Url({
-              url: req.body.url,
-              urlShorten: null
-            });
-            urlShort.save(function (error, data) {
-              if (error) {
-                console.log(error);
-                res.send("error while saving url")
-              }
-              else {
-                // get saved url with updated urlShorten
-                // by MongoDB Atlas' Trigger
-                Url.findOne({ url: data.url})
-                  .then(doc => {
-                    console.log('saved data', doc);
+            let seqValue;
+            Counter.findOneAndUpdate({}, {
+              $inc: { seqValue: 1 }
+            }, { new: true })
+              .then(doc => {
+                console.log(doc);
+                let urlShort = new Url({
+                  url: req.body.url,
+                  urlShorten: doc.seqValue
+                });
+                //console.log(seqValue);
+                urlShort.save(function (error, data) {
+                  if (error) {
+                    console.log(error);
+                    res.send("error while saving url")
+                  }
+                  else {
+                    console.log(data);
                     res.json({
-                      original_url: doc.url,
-                      short_url: doc.urlShorten
+                      original_url: data.url,
+                      short_url: data.urlShorten
                     });
-                  })
-                  .catch(er => {
-                    console.log(er);
-                    res.send('error while finding ulr')
-                  });
-              }
-            });
+                  }
+                });
+              })
+              .catch(err => {
+                console.log(err);
+                res.send("system error, try again later");
+              });
           }
           // if url found then respond with doc
           else {
             res.json({
               original_url: inf[0].url,
-              shor_url: inf[0].urlShorten
+              short_url: inf[0].urlShorten
             })
           }
         });
